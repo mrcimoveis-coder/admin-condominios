@@ -54,7 +54,7 @@ except Exception as e:
 st.title("🏢 Gestão de Administradoras de Condomínio")
 st.write("Consulta rápida de contatos, senhas e vínculos de imóveis da carteira MRC.")
 
-aba_consulta, aba_cadastro, aba_editar = st.tabs(["🔍 Consultar Administradoras", "➕ Cadastrar Novo Vínculo", "✏️ Atualizar Dados"])
+aba_consulta, aba_cadastro, aba_editar = st.tabs(["🔍 Consultar Administradoras", "➕ Cadastrar Novo Vínculo", "✏️ Editar / Excluir"])
 
 # --- ABA 1: CONSULTA ---
 with aba_consulta:
@@ -112,21 +112,23 @@ with aba_cadastro:
                 except Exception as e:
                     st.error(f"❌ Erro ao salvar no Google Sheets: {e}")
 
-# --- ABA 3: EDIÇÃO ---
+# --- ABA 3: EDIÇÃO E EXCLUSÃO ---
 with aba_editar:
-    st.subheader("Alterar Locatário, Contatos ou Dados de um Imóvel")
+    st.subheader("Alterar ou Excluir Registro")
     try:
         dados_raw = sheet.get_all_records()
         if dados_raw:
             df = pd.DataFrame(dados_raw)
             if "Imóvel Locado" in df.columns:
                 lista_imoveis = df["Imóvel Locado"].dropna().unique().tolist()
-                imovel_selecionado = st.selectbox("Selecione o imóvel que deseja atualizar:", [""] + lista_imoveis)
+                imovel_selecionado = st.selectbox("Selecione o imóvel que deseja gerenciar:", [""] + lista_imoveis)
                 
                 if imovel_selecionado:
                     linha_idx = df.index[df['Imóvel Locado'] == imovel_selecionado].tolist()[0]
                     dados_atuais = df.iloc[linha_idx]
+                    linha_real = linha_idx + 2  # Acha a linha exata no Sheets
                     
+                    # --- BLOCO DE EDIÇÃO ---
                     with st.form("form_editar_dados"):
                         st.info(f"Editando dados da administradora: **{dados_atuais.get('Administradora', '')}**")
                         col_edit1, col_edit2 = st.columns(2)
@@ -147,7 +149,6 @@ with aba_editar:
                         btn_atualizar = st.form_submit_button("🔄 Confirmar Alterações", type="primary")
                         
                         if btn_atualizar:
-                            linha_real = linha_idx + 2
                             sheet.update_cell(linha_real, 3, novo_locatario)
                             sheet.update_cell(linha_real, 4, novo_locador)
                             sheet.update_cell(linha_real, 5, novo_contato_pref)
@@ -156,5 +157,20 @@ with aba_editar:
                             sheet.update_cell(linha_real, 8, nova_senha)
                             st.success("✅ Dados atualizados com sucesso!")
                             st.rerun()
+                    
+                    # --- BLOCO DE EXCLUSÃO (NOVO) ---
+                    st.markdown("---")
+                    st.markdown("### ❌ Excluir Imóvel do Sistema")
+                    st.warning("Cuidado: Esta ação apagará permanentemente o imóvel e todos os contatos desta administradora da planilha.")
+                    
+                    # Trava de segurança
+                    confirmar_exclusao = st.checkbox("Tenho certeza que desejo excluir este registro")
+                    
+                    if confirmar_exclusao:
+                        if st.button("🗑️ Apagar Registro Definitivamente"):
+                            sheet.delete_row(linha_real)  # Deleta a linha direto no Google Sheets
+                            st.success("✅ Registro excluído com sucesso!")
+                            st.rerun()
+                            
     except Exception as e:
         st.error(f"Erro ao carregar módulo de edição: {e}")
