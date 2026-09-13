@@ -25,7 +25,7 @@ def conectar_google_sheets():
     
     credentials = Credentials.from_service_account_info(credenciais_dict, scopes=SCOPES)
     client = gspread.authorize(credentials)
-    return client.open("Administradoras_MRC").sheet1
+    return client.open_by_key("15-ilgG_5sxKAkcR8STzu9aRE76UlEIKwXCnDeN6rmss").sheet1
 
 # 3. Autenticação por Senha
 SENHA_CORRETA = "431360"
