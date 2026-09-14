@@ -112,43 +112,67 @@ with aba_cadastro:
                 except Exception as e:
                     st.error(f"❌ Erro ao salvar no Google Sheets: {e}")
 
-# --- ABA 3: EDIÇÃO E EXCLUSÃO ---
+# --- ABA 3: EDIÇÃO E EXCLUSÃO (MELHORADA COM BUSCA INTELIGENTE) ---
 with aba_editar:
     st.subheader("Alterar ou Excluir Registro")
     try:
         dados_raw = sheet.get_all_records()
         if dados_raw:
             df = pd.DataFrame(dados_raw)
-            if "Imóvel Locado" in df.columns:
-                lista_imoveis = df["Imóvel Locado"].dropna().unique().tolist()
-                imovel_selecionado = st.selectbox("Selecione o imóvel que deseja gerenciar:", [""] + lista_imoveis)
+            
+            # Campo de busca em texto livre
+            kw_ed = st.text_input("🔎 Pesquisar para localizar o registro (Administradora, Imóvel, Locador ou Locatário):", key="search_editar_adm")
+            
+            df_e = df.copy()
+            if kw_ed:
+                termo_ed = kw_ed.lower()
+                mask_e = df_e.apply(lambda r: r.astype(str).str.lower().str.contains(termo_ed).any(), axis=1)
+                df_e = df_e[mask_e]
                 
-                if imovel_selecionado:
-                    linha_idx = df.index[df['Imóvel Locado'] == imovel_selecionado].tolist()[0]
-                    dados_atuais = df.iloc[linha_idx]
-                    linha_real = linha_idx + 2  # Acha a linha exata no Sheets
+            if df_e.empty:
+                st.warning("⚠️ Nenhum registro encontrado com esse termo de pesquisa.")
+            else:
+                # Cria um dicionário seguro mapeando o rótulo de exibição para o índice real do dataframe
+                options_dict_e = {}
+                for idx_e, row_e in df_e.iterrows():
+                    lbl = f"🏢 {row_e.get('Administradora', 'N/I')} | 📍 {row_e.get('Imóvel Locado', 'N/I')} | 👤 {row_e.get('Locatário', 'N/I')}"
+                    options_dict_e[lbl] = idx_e
+                    
+                item_e_lbl = st.selectbox("Selecione o registro exato que deseja gerenciar:", [""] + list(options_dict_e.keys()))
+                
+                if item_e_lbl:
+                    idx_e = options_dict_e[item_e_lbl]
+                    dados_atuais = df.iloc[idx_e]
+                    linha_real = idx_e + 2  # Acha a linha exata no Sheets
+                    
+                    st.markdown("---")
                     
                     # --- BLOCO DE EDIÇÃO ---
                     with st.form("form_editar_dados"):
-                        st.info(f"Editando dados da administradora: **{dados_atuais.get('Administradora', '')}**")
+                        st.info(f"✏️ Editando dados da administradora: **{dados_atuais.get('Administradora', '')}**")
                         col_edit1, col_edit2 = st.columns(2)
                         
                         with col_edit1:
-                            novo_locatario = st.text_input("Locatário", value=dados_atuais.get("Locatário", ""))
-                            novo_locador = st.text_input("Locador", value=dados_atuais.get("Locador", ""))
+                            novo_imovel = st.text_input("Endereço do Imóvel Vinculado", value=str(dados_atuais.get("Imóvel Locado", "")))
+                            novo_locatario = st.text_input("Locatário", value=str(dados_atuais.get("Locatário", "")))
+                            novo_locador = st.text_input("Locador", value=str(dados_atuais.get("Locador", "")))
+                            
                             opcoes_contato = ["WHATSAPP", "E-MAIL", "TELEFONE", "SITE / PORTAL", "OUTRO"]
                             contato_atual = str(dados_atuais.get("Contato Preferencial", "E-MAIL")).upper()
                             index_contato = opcoes_contato.index(contato_atual) if contato_atual in opcoes_contato else 4
                             novo_contato_pref = st.selectbox("Contato Preferencial", opcoes_contato, index=index_contato)
                         
                         with col_edit2:
-                            novo_tel = st.text_input("Telefone / WhatsApp", value=dados_atuais.get("Telefone / WhatsApp", ""))
-                            novo_email = st.text_input("E-mail", value=dados_atuais.get("E-mail", ""))
-                            nova_senha = st.text_area("Senhas e Observações", value=dados_atuais.get("Senhas e Observações", ""))
+                            novo_adm = st.text_input("Nome da Administradora", value=str(dados_atuais.get("Administradora", "")))
+                            novo_tel = st.text_input("Telefone / WhatsApp", value=str(dados_atuais.get("Telefone / WhatsApp", "")))
+                            novo_email = st.text_input("E-mail", value=str(dados_atuais.get("E-mail", "")))
+                            nova_senha = st.text_area("Senhas e Observações", value=str(dados_atuais.get("Senhas e Observações", "")))
                         
                         btn_atualizar = st.form_submit_button("🔄 Confirmar Alterações", type="primary")
                         
                         if btn_atualizar:
+                            sheet.update_cell(linha_real, 1, novo_adm)
+                            sheet.update_cell(linha_real, 2, novo_imovel)
                             sheet.update_cell(linha_real, 3, novo_locatario)
                             sheet.update_cell(linha_real, 4, novo_locador)
                             sheet.update_cell(linha_real, 5, novo_contato_pref)
@@ -158,7 +182,7 @@ with aba_editar:
                             st.success("✅ Dados atualizados com sucesso!")
                             st.rerun()
                     
-                    # --- BLOCO DE EXCLUSÃO (NOVO) ---
+                    # --- BLOCO DE EXCLUSÃO ---
                     st.markdown("---")
                     st.markdown("### ❌ Excluir Imóvel do Sistema")
                     st.warning("Cuidado: Esta ação apagará permanentemente o imóvel e todos os contatos desta administradora da planilha.")
@@ -167,9 +191,11 @@ with aba_editar:
                     confirmar_exclusao = st.checkbox("Tenho certeza que desejo excluir este registro")
                     
                     if confirmar_exclusao:
-                        if st.button("🗑️ Apagar Registro Definitivamente"):
+                        if st.button("🗑️ Apagar Registro Definitivamente", type="primary"):
                             sheet.delete_row(linha_real)  # Deleta a linha direto no Google Sheets
                             st.success("✅ Registro excluído com sucesso!")
+                            st.cache_data.clear()
+                            st.cache_resource.clear()
                             st.rerun()
                             
     except Exception as e:
